@@ -1,0 +1,1 @@
+# PyQt5 Application - IUTEPI Gestión de Laboratorios

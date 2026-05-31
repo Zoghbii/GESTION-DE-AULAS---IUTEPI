@@ -1,0 +1,36 @@
+# === Credenciales y configuración sensible ===
+.env
+*.env.local
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# === Entorno virtual ===
+venv/
+.venv/
+env/
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === Archivos generados por la app ===
+*.pdf
+LOG40CM-3-scaled-e1643832660979-removebg-preview.png
+
+# === Base de datos ===
+# No incluir esquemas con datos sensibles
+# Zoghbi.sql es el esquema de referencia, incluir si no tiene datos sensibles
+
+# === Sistema ===
+Thumbs.db
+.DS_Store

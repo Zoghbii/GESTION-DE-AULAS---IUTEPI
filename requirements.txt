@@ -1,0 +1,7 @@
+PyQt5>=5.15.0
+pyqt-fluent-widgets==1.11.2
+mysql-connector-python>=9.0.0
+reportlab>=4.0
+matplotlib>=3.5.0
+bcrypt>=4.1.0
+python-dotenv>=1.0.0
