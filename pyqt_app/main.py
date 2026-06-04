@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import Qt, QLocale
+from PyQt5.QtCore import QLocale
 from qfluentwidgets import setThemeColor
 
 from app import MainAppWindow

@@ -1,11 +1,37 @@
 from PyQt5.QtGui import QFont
-from PyQt5.QtCore import Qt, QDate, QTime
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout, QMessageBox, QTableWidgetItem
+from PyQt5.QtCore import Qt, QDate
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QFrame, QGridLayout, QMessageBox, QTableWidgetItem
+)
 from qfluentwidgets import (
     ScrollArea, CardWidget, PrimaryPushButton, PushButton, TitleLabel, BodyLabel,
-    CaptionLabel, LineEdit, ComboBox, DatePicker, TimePicker, setFont,
+    CaptionLabel, LineEdit, ComboBox, DatePicker, setFont,
     InfoBar, InfoBarPosition, TableWidget
 )
+from utils.qt_helpers import parsear_id_tabla, leer_celda
+
+
+def _parsear_hora_12h(texto, ampm):
+    """Convierte 'hh:mm' + 'AM'/'PM' a 'HH:MM:SS' 24h. Retorna None si inválido."""
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    partes = texto.split(":")
+    if len(partes) != 2:
+        return None
+    try:
+        h = int(partes[0])
+        m = int(partes[1])
+    except ValueError:
+        return None
+    if h < 1 or h > 12 or m < 0 or m > 59:
+        return None
+    ampm = (ampm or "AM").upper()
+    if ampm == "PM" and h != 12:
+        h += 12
+    elif ampm == "AM" and h == 12:
+        h = 0
+    return f"{h:02d}:{m:02d}:00"
 
 
 class ReservaView(ScrollArea):
@@ -58,6 +84,9 @@ class ReservaView(ScrollArea):
         self.ent_periodo = LineEdit()
         self._add_field(grid, 2, 0, "Período", self.ent_periodo, "Ej: PR25-4")
 
+        self.ent_seccion = LineEdit()
+        self._add_field(grid, 2, 1, "Sección", self.ent_seccion, "Ej: SAI-101 (opcional)")
+
         form_layout.addLayout(grid)
 
         btn_crear = PrimaryPushButton("Guardar Reserva")
@@ -81,15 +110,41 @@ class ReservaView(ScrollArea):
 
         lbl_ini = CaptionLabel("Hora inicio:")
         cal_layout.addWidget(lbl_ini)
-        self.time_inicio = TimePicker()
-        self.time_inicio.setTime(QTime(8, 0))
-        cal_layout.addWidget(self.time_inicio)
+        hlayout_ini = QHBoxLayout()
+        hlayout_ini.setSpacing(4)
+        self.ent_hora_ini = LineEdit()
+        self.ent_hora_ini.setText("08:00")
+        self.ent_hora_ini.setPlaceholderText("hh:mm")
+        self.ent_hora_ini.setFixedHeight(36)
+        self.ent_hora_ini.setMaximumWidth(90)
+        self.ent_hora_ini.setStyleSheet(self._time_style())
+        self.comb_ampm_ini = ComboBox()
+        self.comb_ampm_ini.addItems(["AM", "PM"])
+        self.comb_ampm_ini.setFixedHeight(36)
+        self.comb_ampm_ini.setMaximumWidth(70)
+        hlayout_ini.addWidget(self.ent_hora_ini)
+        hlayout_ini.addWidget(self.comb_ampm_ini)
+        hlayout_ini.addStretch()
+        cal_layout.addLayout(hlayout_ini)
 
         lbl_fin = CaptionLabel("Hora fin:")
         cal_layout.addWidget(lbl_fin)
-        self.time_fin = TimePicker()
-        self.time_fin.setTime(QTime(9, 0))
-        cal_layout.addWidget(self.time_fin)
+        hlayout_fin = QHBoxLayout()
+        hlayout_fin.setSpacing(4)
+        self.ent_hora_fin = LineEdit()
+        self.ent_hora_fin.setText("09:00")
+        self.ent_hora_fin.setPlaceholderText("hh:mm")
+        self.ent_hora_fin.setFixedHeight(36)
+        self.ent_hora_fin.setMaximumWidth(90)
+        self.ent_hora_fin.setStyleSheet(self._time_style())
+        self.comb_ampm_fin = ComboBox()
+        self.comb_ampm_fin.addItems(["AM", "PM"])
+        self.comb_ampm_fin.setFixedHeight(36)
+        self.comb_ampm_fin.setMaximumWidth(70)
+        hlayout_fin.addWidget(self.ent_hora_fin)
+        hlayout_fin.addWidget(self.comb_ampm_fin)
+        hlayout_fin.addStretch()
+        cal_layout.addLayout(hlayout_fin)
 
         lbl_lab = CaptionLabel("Laboratorio:")
         cal_layout.addWidget(lbl_lab)
@@ -109,10 +164,10 @@ class ReservaView(ScrollArea):
         self.tabla = TableWidget()
         self.tabla.setBorderVisible(True)
         self.tabla.setBorderRadius(4)
-        self.tabla.setColumnCount(9)
+        self.tabla.setColumnCount(10)
         self.tabla.setHorizontalHeaderLabels([
             "ID", "Docente", "Materia", "Carrera",
-            "Estudiantes", "Lab", "Fecha", "Inicio", "Fin"
+            "Estudiantes", "Lab", "Fecha", "Inicio", "Fin", "Sección"
         ])
         self.tabla.horizontalHeader().setStretchLastSection(True)
         tabla_layout.addWidget(self.tabla)
@@ -133,12 +188,20 @@ class ReservaView(ScrollArea):
         if isinstance(widget, LineEdit):
             widget.setPlaceholderText(placeholder)
 
+    @staticmethod
+    def _time_style():
+        return (
+            "border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; "
+            "padding: 6px; font-size: 14px;"
+        )
+
     def guardar(self):
         docente = self.ent_docente.text().strip()
         materia = self.ent_materia.text().strip()
         carrera = self.comb_carrera.currentText()
         estudiantes_text = self.ent_estudiantes.text().strip()
         periodo = self.ent_periodo.text().strip()
+        seccion = self.ent_seccion.text().strip()
 
         if not all([docente, materia, estudiantes_text, periodo]):
             QMessageBox.warning(self, "Error", "Complete todos los campos obligatorios.")
@@ -154,9 +217,19 @@ class ReservaView(ScrollArea):
             return
 
         fecha = self.date_picker.date.toString("yyyy-MM-dd")
-        h_inicio = self.time_inicio.time.toString("HH:mm:ss")
-        h_fin = self.time_fin.time.toString("HH:mm:ss")
+        h_inicio = _parsear_hora_12h(
+            self.ent_hora_ini.text(), self.comb_ampm_ini.currentText()
+        )
+        h_fin = _parsear_hora_12h(
+            self.ent_hora_fin.text(), self.comb_ampm_fin.currentText()
+        )
 
+        if not h_inicio or not h_fin:
+            QMessageBox.warning(
+                self, "Error",
+                "Horas inválidas. Use formato hh:mm con horas 1-12 y AM/PM."
+            )
+            return
         if h_inicio >= h_fin:
             QMessageBox.warning(self, "Error", "La hora de fin debe ser posterior a la de inicio.")
             return
@@ -177,6 +250,7 @@ class ReservaView(ScrollArea):
             'carrera': carrera,
             'estudiantes': estudiantes,
             'periodo': periodo,
+            'seccion': seccion,
             'tipo': 'Evento Único',
             'dia': '',
             'fecha': fecha,
@@ -209,8 +283,10 @@ class ReservaView(ScrollArea):
             QMessageBox.warning(self, "Error", "Seleccione una reserva de la tabla.")
             return
 
-        id_reserva = int(self.tabla.item(fila, 0).text())
-        docente = self.tabla.item(fila, 1).text()
+        id_reserva = parsear_id_tabla(self.tabla, fila)
+        if id_reserva is None:
+            return
+        docente = leer_celda(self.tabla, fila, 1)
         confirm = QMessageBox.question(
             self, "Confirmar",
             f"¿Eliminar reserva de {docente}?",

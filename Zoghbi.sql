@@ -49,9 +49,22 @@ CREATE TABLE IF NOT EXISTS `horarios_semestrales` (
     `dia_semana`   VARCHAR(20) NOT NULL,
     `hora_inicio`  TIME NOT NULL,
     `hora_fin`     TIME NOT NULL,
+    `seccion`      VARCHAR(20) DEFAULT '',
     FOREIGN KEY (`id_semestre`) REFERENCES `semestres`(`id_semestre`)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Migración: si la tabla ya existe sin la columna 'seccion', agregarla
+-- (Aplicable a bases de datos creadas antes de la v2.x)
+-- SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+--     WHERE TABLE_SCHEMA = 'iutepi_sgla' AND TABLE_NAME = 'horarios_semestrales' AND COLUMN_NAME = 'seccion');
+-- SET @sql = IF(@col_exists = 0,
+--     'ALTER TABLE `horarios_semestrales` ADD COLUMN `seccion` VARCHAR(20) DEFAULT '''' AFTER `hora_fin`',
+--     'SELECT ''Columna seccion ya existe, sin cambios'' AS mensaje');
+-- PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--
+-- Estado actual (migrado):
+--   seccion VARCHAR(20) DEFAULT '' agregado exitosamente
 
 -- ============================================================
 -- TABLA: laboratorios
@@ -75,9 +88,21 @@ CREATE TABLE IF NOT EXISTS `reservas` (
     `num_estudiantes` INT DEFAULT 0,
     `periodo`        VARCHAR(20) DEFAULT NULL,
     `tipo_reserva`   VARCHAR(50) DEFAULT 'Clase Semestral',
+    `seccion`        VARCHAR(20) DEFAULT '',
     FOREIGN KEY (`id_docente`) REFERENCES `docentes`(`id_docente`)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Migración: agregar columna 'seccion' a reservas (para bases de datos existentes)
+-- SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+--     WHERE TABLE_SCHEMA = 'iutepi_sgla' AND TABLE_NAME = 'reservas' AND COLUMN_NAME = 'seccion');
+-- SET @sql = IF(@col_exists = 0,
+--     'ALTER TABLE `reservas` ADD COLUMN `seccion` VARCHAR(20) DEFAULT ''''',
+--     'SELECT ''Columna seccion ya existe en reservas, sin cambios'' AS mensaje');
+-- PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+--
+-- Estado actual (migrado):
+--   seccion VARCHAR(20) DEFAULT '' agregado exitosamente a reservas
 
 -- ============================================================
 -- TABLA: detalles_horario (con índice de disponibilidad)
@@ -116,7 +141,7 @@ INSERT INTO `laboratorios` (`id_lab`, `nombre_lab`, `tipo`, `capacidad`, `estatu
     (1, 'Laboratorio I',   'Laboratorio', 30, 'Disponible'),
     (2, 'Laboratorio II',  'Laboratorio', 25, 'Disponible'),
     (3, 'Laboratorio III', 'Laboratorio', 30, 'Disponible'),
-    (4, 'Laboratorio VI',  'Laboratorio', 25, 'Disponible')
+    (4, 'Laboratorio IV',  'Laboratorio', 25, 'Disponible')
 ON DUPLICATE KEY UPDATE `nombre_lab` = VALUES(`nombre_lab`);
 
 -- Nota: El usuario admin se crea desde la aplicación

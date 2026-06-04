@@ -1,9 +1,8 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QMessageBox, QTableWidgetItem
-from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QTableWidgetItem
 from qfluentwidgets import (
-    ScrollArea, CardWidget, PrimaryPushButton, PushButton, TitleLabel, BodyLabel,
-    CaptionLabel, setFont, InfoBar, InfoBarPosition, TableWidget
+    ScrollArea, CardWidget, PushButton, TitleLabel,
+    InfoBar, InfoBarPosition, TableWidget
 )
 
 class EspaciosView(ScrollArea):
@@ -62,10 +61,19 @@ class EspaciosView(ScrollArea):
         if fila < 0:
             QMessageBox.warning(self, "Error", "Seleccione un laboratorio")
             return
-        id_lab = self.tabla.item(fila, 0).text()
-        estatus_actual = self.tabla.item(fila, 4).text()
+        id_item = self.tabla.item(fila, 0)
+        estatus_item = self.tabla.item(fila, 4)
+        if id_item is None or estatus_item is None:
+            QMessageBox.warning(self, "Error", "Datos de la fila no válidos")
+            return
+        try:
+            id_lab = int(id_item.text())
+        except ValueError:
+            QMessageBox.warning(self, "Error", "ID de laboratorio inválido")
+            return
+        estatus_actual = estatus_item.text()
         nuevo = "Disponible" if estatus_actual == "Ocupado" else "Ocupado"
-        if self.modelo.actualizar_estatus_laboratorio(int(id_lab), nuevo):
+        if self.modelo.actualizar_estatus_laboratorio(id_lab, nuevo):
             self.cargar_datos()
             InfoBar.success(
                 title="Estado actualizado",
@@ -76,3 +84,5 @@ class EspaciosView(ScrollArea):
                 duration=2000,
                 parent=self
             )
+        else:
+            QMessageBox.critical(self, "Error", "No se pudo actualizar el estado")

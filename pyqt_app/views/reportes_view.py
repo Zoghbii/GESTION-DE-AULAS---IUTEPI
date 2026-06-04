@@ -1,12 +1,11 @@
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QLabel, QFrame, QFileDialog,
+    QVBoxLayout, QHBoxLayout, QFrame, QFileDialog,
     QMessageBox, QTableWidgetItem
 )
 from PyQt5.QtGui import QFont
 from qfluentwidgets import (
-    ScrollArea, CardWidget, PrimaryPushButton, PushButton, TitleLabel, BodyLabel,
-    CaptionLabel, ComboBox, setFont, InfoBar, InfoBarPosition, TableWidget
+    ScrollArea, CardWidget, PrimaryPushButton, TitleLabel, BodyLabel,
+    CaptionLabel, ComboBox, setFont, TableWidget
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure

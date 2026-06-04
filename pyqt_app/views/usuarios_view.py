@@ -1,10 +1,10 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QMessageBox, QTableWidgetItem
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QTableWidgetItem
 from PyQt5.QtGui import QFont
 from qfluentwidgets import (
     ScrollArea, CardWidget, PrimaryPushButton, PushButton, TitleLabel, BodyLabel,
     CaptionLabel, LineEdit, ComboBox, setFont, TableWidget
 )
+from utils.qt_helpers import parsear_id_tabla, leer_celda
 
 
 class UsuariosView(ScrollArea):
@@ -102,7 +102,7 @@ class UsuariosView(ScrollArea):
 
     def crear_usuario(self):
         nombre = self.ent_usuario.text().strip()
-        contrasena = self.ent_pass.text().strip()
+        contrasena = self.ent_pass.text()
         rol = self.comb_rol.currentText()
 
         if not nombre or not contrasena:
@@ -137,8 +137,10 @@ class UsuariosView(ScrollArea):
         if fila < 0:
             QMessageBox.warning(self, "Error", "Seleccione un usuario para eliminar.")
             return
-        id_usuario = int(self.tabla.item(fila, 0).text())
-        nombre_usuario = self.tabla.item(fila, 1).text()
+        id_usuario = parsear_id_tabla(self.tabla, fila)
+        if id_usuario is None:
+            return
+        nombre_usuario = leer_celda(self.tabla, fila, 1)
         if nombre_usuario == 'admin':
             QMessageBox.warning(self, "Error", "No se puede eliminar el usuario admin principal.")
             return

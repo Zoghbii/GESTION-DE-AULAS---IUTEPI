@@ -4,6 +4,9 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPixmap
 import os
+import logging
+
+logger = logging.getLogger("iutepi.login")
 
 COLOR_ROJO = "#E31E24"
 
@@ -143,7 +146,7 @@ class LoginWindow(QWidget):
             return
 
         usuario = self.ent_user.text().strip()
-        contrasena = self.ent_pass.text().strip()
+        contrasena = self.ent_pass.text()
 
         if not usuario or not contrasena:
             QMessageBox.warning(self, "Error", "Por favor complete todos los campos.")
@@ -166,6 +169,12 @@ class LoginWindow(QWidget):
                 QMessageBox.critical(self, "Error", msg)
                 self.ent_pass.clear()
                 self.ent_pass.setFocus()
+        except Exception:
+            logger.exception("Error de transporte al validar usuario")
+            QMessageBox.critical(
+                self, "Error de conexion",
+                "No se pudo contactar al servidor. Intente nuevamente."
+            )
         finally:
             self.btn_entrar.setEnabled(True)
             self.btn_entrar.setText("ENTRAR")

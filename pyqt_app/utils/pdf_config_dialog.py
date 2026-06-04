@@ -1,17 +1,24 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QComboBox, QDateEdit, QColorDialog, QFormLayout, QFrame
+    QLineEdit, QComboBox, QDateEdit, QColorDialog, QFormLayout
 )
-from PyQt5.QtCore import Qt, QDate
+from PyQt5.QtCore import QDate
 from PyQt5.QtGui import QColor
+
+DIAS_LUN_VIE = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES"]
+DIAS_SABADO = ["SÁBADO"]
+TIPO_HORARIO_LV = "LUN_VIE"
+TIPO_HORARIO_SA = "SABADO"
+
 
 class PDFConfigDialog(QDialog):
     def __init__(self, modelo, parent=None):
         super().__init__(parent)
         self.modelo = modelo
         self.color_celda = "#E31E24"
+        self.color_texto = "#FFFFFF"
         self.setWindowTitle("Configurar PDF Semestral")
-        self.setFixedSize(420, 380)
+        self.setFixedSize(420, 520)
         self.setStyleSheet("background-color: #FFFFFF;")
         self.init_ui()
 
@@ -26,6 +33,13 @@ class PDFConfigDialog(QDialog):
 
         form = QFormLayout()
         form.setSpacing(10)
+
+        self.comb_tipo_horario = QComboBox()
+        self.comb_tipo_horario.setFixedHeight(36)
+        self.comb_tipo_horario.setStyleSheet(self._combo_style())
+        self.comb_tipo_horario.addItem("Lunes a Viernes (7:40 - 15:00)", TIPO_HORARIO_LV)
+        self.comb_tipo_horario.addItem("Sábado (7:20 - 17:00)", TIPO_HORARIO_SA)
+        form.addRow("Tipo de Horario:", self.comb_tipo_horario)
 
         self.ent_periodo = QLineEdit()
         self.ent_periodo.setPlaceholderText("Ej: PR25-4")
@@ -44,6 +58,12 @@ class PDFConfigDialog(QDialog):
         self.ent_carrera.setEditable(True)
         self.ent_carrera.addItems(["Análisis de Sistemas", "Electrónica", "Administración"])
         form.addRow("Carrera:", self.ent_carrera)
+
+        self.ent_seccion = QLineEdit()
+        self.ent_seccion.setPlaceholderText("Ej: SAI-101")
+        self.ent_seccion.setFixedHeight(36)
+        self.ent_seccion.setStyleSheet(self._input_style())
+        form.addRow("Sección:", self.ent_seccion)
 
         self.date_inicio = QDateEdit()
         self.date_inicio.setCalendarPopup(True)
@@ -78,6 +98,18 @@ class PDFConfigDialog(QDialog):
         color_layout.addWidget(self.btn_color)
         color_layout.addStretch()
         form.addRow("", color_layout)
+
+        color_texto_layout = QHBoxLayout()
+        self.btn_color_texto = QPushButton()
+        self.btn_color_texto.setFixedSize(36, 36)
+        self.btn_color_texto.setStyleSheet(f"background-color: {self.color_texto}; border: 1px solid #D1D5DB; border-radius: 4px;")
+        self.btn_color_texto.clicked.connect(self.seleccionar_color_texto)
+        lbl_color_texto = QLabel("Color de texto:")
+        lbl_color_texto.setStyleSheet("color: #4B5563; font-size: 13px;")
+        color_texto_layout.addWidget(lbl_color_texto)
+        color_texto_layout.addWidget(self.btn_color_texto)
+        color_texto_layout.addStretch()
+        form.addRow("", color_texto_layout)
 
         layout.addLayout(form)
         layout.addStretch()
@@ -114,15 +146,27 @@ class PDFConfigDialog(QDialog):
             self.color_celda = color.name()
             self.btn_color.setStyleSheet(f"background-color: {self.color_celda}; border: 1px solid #D1D5DB; border-radius: 4px;")
 
+    def seleccionar_color_texto(self):
+        color = QColorDialog.getColor(QColor(self.color_texto), self, "Color de texto")
+        if color.isValid():
+            self.color_texto = color.name()
+            self.btn_color_texto.setStyleSheet(f"background-color: {self.color_texto}; border: 1px solid #D1D5DB; border-radius: 4px;")
+
     def obtener_config(self):
+        tipo = self.comb_tipo_horario.currentData() or TIPO_HORARIO_LV
+        dias = DIAS_SABADO if tipo == TIPO_HORARIO_SA else DIAS_LUN_VIE
         return {
             "periodo": self.ent_periodo.text().strip(),
             "semestre": self.comb_semestre.currentText().split(" - ")[0] if self.comb_semestre.currentData() else "",
             "id_semestre": self.comb_semestre.currentData(),
             "carrera": self.ent_carrera.currentText().strip(),
+            "seccion": self.ent_seccion.text().strip(),
             "fecha_inicio": self.date_inicio.date().toString("dd/MM/yyyy"),
             "fecha_fin": self.date_fin.date().toString("dd/MM/yyyy"),
             "aula": self.ent_aula.text().strip(),
+            "tipo_horario": tipo,
+            "dias": dias,
+            "color_texto": self.color_texto,
         }
 
     def _input_style(self):

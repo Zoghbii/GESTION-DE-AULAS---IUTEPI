@@ -1,6 +1,9 @@
 import os
 import re
+import string
+import secrets
 import logging
+from datetime import datetime
 
 import mysql.connector
 from mysql.connector.pooling import MySQLConnectionPool
@@ -19,11 +22,13 @@ class DatabaseModel:
             'user': os.getenv('DB_USER', 'root'),
             'password': os.getenv('DB_PASSWORD', ''),
             'database': os.getenv('DB_NAME', 'iutepi_sgla'),
+            'use_pure': True,
         }
         self.pool = None
-        self._init_pool()
 
     def _init_pool(self):
+        if self.pool is not None:
+            return
         try:
             self.pool = MySQLConnectionPool(
                 pool_name="iutepi_pool",
@@ -35,11 +40,13 @@ class DatabaseModel:
             self.pool = None
 
     def conectar(self):
+        if self.pool is None:
+            self._init_pool()
         if self.pool:
             try:
                 return self.pool.get_connection()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Pool de conexiones fallo, usando conexion directa: %s", e)
         return mysql.connector.connect(**self.config)
 
     # ========== SEGURIDAD ==========
@@ -56,8 +63,30 @@ class DatabaseModel:
             return bcrypt.checkpw(
                 password.encode('utf-8'), hashed.encode('utf-8')
             )
-        except Exception:
+        except (ValueError, TypeError) as e:
+            logger.warning("check_password fallo (hash invalido): %s", e)
             return False
+
+    @staticmethod
+    def _generar_password_aleatoria(longitud=16):
+        alfabeto = string.ascii_letters + string.digits + "!@#$%&*"
+        return ''.join(secrets.choice(alfabeto) for _ in range(longitud))
+
+    @staticmethod
+    def _guardar_credenciales_iniciales(nombre_usuario, password):
+        ruta = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "PRIMER_LOGIN.txt"
+        )
+        try:
+            with open(ruta, "w", encoding="utf-8") as f:
+                f.write(f"Usuario: {nombre_usuario}\n")
+                f.write(f"Password: {password}\n")
+                f.write(f"Generado: {datetime.now().isoformat()}\n")
+                f.write("IMPORTANTE: Cambie esta contrasena despues del primer inicio de sesion.\n")
+            logger.warning("Credenciales iniciales guardadas en %s", ruta)
+        except OSError as e:
+            logger.exception("No se pudo escribir archivo de credenciales: %s", e)
 
     @staticmethod
     def validar_nombre_usuario(nombre):
@@ -101,6 +130,7 @@ class DatabaseModel:
                     dia_semana VARCHAR(20) NOT NULL,
                     hora_inicio TIME NOT NULL,
                     hora_fin TIME NOT NULL,
+                    seccion VARCHAR(20) DEFAULT '',
                     FOREIGN KEY (id_semestre) REFERENCES semestres(id_semestre) ON DELETE CASCADE
                 )
             """)
@@ -146,15 +176,19 @@ class DatabaseModel:
             """)
 
             cursor.execute("SELECT 1 FROM usuarios WHERE nombre_usuario = 'admin'")
-            if not cursor.fetchone():
-                hashed = self.hash_password('admin123')
+            admin_row = cursor.fetchone()
+            if not admin_row:
+                password_inicial = self._generar_password_aleatoria()
+                hashed = self.hash_password(password_inicial)
                 cursor.execute(
                     "INSERT INTO usuarios (nombre_usuario, contrasena, rol) VALUES (%s, %s, %s)",
                     ('admin', hashed, 'Admin')
                 )
+                self._guardar_credenciales_iniciales('admin', password_inicial)
 
             cursor.execute("SELECT COUNT(*) FROM semestres")
-            if cursor.fetchone()[0] == 0:
+            count_row = cursor.fetchone()
+            if (count_row is None or count_row[0] == 0):
                 for i in range(1, 7):
                     cursor.execute(
                         "INSERT INTO semestres (nombre, periodo) VALUES (%s, %s)",
@@ -162,18 +196,24 @@ class DatabaseModel:
                     )
 
             cursor.execute("SELECT COUNT(*) FROM laboratorios")
-            if cursor.fetchone()[0] == 0:
+            count_row = cursor.fetchone()
+            if (count_row is None or count_row[0] == 0):
                 labs = [
                     ("Laboratorio I", "Laboratorio", 30),
                     ("Laboratorio II", "Laboratorio", 25),
                     ("Laboratorio III", "Laboratorio", 30),
-                    ("Laboratorio VI", "Laboratorio", 25),
+                    ("Laboratorio IV", "Laboratorio", 25),
                 ]
                 for nombre, tipo, cap in labs:
                     cursor.execute(
                         "INSERT INTO laboratorios (nombre_lab, tipo, capacidad) VALUES (%s, %s, %s)",
                         (nombre, tipo, cap)
                     )
+            else:
+                cursor.execute(
+                    "UPDATE laboratorios SET nombre_lab = 'Laboratorio IV' "
+                    "WHERE nombre_lab = 'Laboratorio VI'"
+                )
 
             conn.commit()
             return True
@@ -200,21 +240,19 @@ class DatabaseModel:
                 return None
             user_id, stored_hash, rol = res
 
-            if stored_hash.startswith('$2') and self.check_password(contrasena, stored_hash):
-                return rol
-
-            if not stored_hash.startswith('$2') and contrasena == stored_hash:
-                new_hash = self.hash_password(contrasena)
-                cursor.execute(
-                    "UPDATE usuarios SET contrasena = %s WHERE id_usuario = %s",
-                    (new_hash, user_id)
+            if not stored_hash or not stored_hash.startswith('$2'):
+                logger.warning(
+                    "Usuario id=%s tiene contrasena en formato invalido; "
+                    "rechazando login (requiere reset manual).", user_id
                 )
-                conn.commit()
+                return None
+
+            if self.check_password(contrasena, stored_hash):
                 return rol
 
             return None
-        except Exception as e:
-            logger.error("Error validando usuario: %s", e)
+        except Exception:
+            logger.exception("Error validando usuario id_buscado=%s", nombre)
             return None
         finally:
             conn.close()
@@ -272,6 +310,7 @@ class DatabaseModel:
             conn.commit()
             return True
         except Exception as e:
+            conn.rollback()
             logger.error("Error eliminando usuario: %s", e)
             return False
         finally:
@@ -327,7 +366,8 @@ class DatabaseModel:
                 WHERE dh.id_lab = %s AND dh.fecha = %s
                 AND dh.hora_inicio < %s AND dh.hora_fin > %s
             """, (id_lab, fecha, h_fin, h_inicio))
-            count = cursor.fetchone()[0]
+            count_row = cursor.fetchone()
+            count = count_row[0] if count_row is not None else 0
             if count > 0:
                 return False, "El laboratorio ya está reservado en ese horario"
             return True, ""
@@ -358,10 +398,11 @@ class DatabaseModel:
 
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO reservas (id_docente, materia, carrera, num_estudiantes, periodo, tipo_reserva)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO reservas (id_docente, materia, carrera, num_estudiantes, periodo, tipo_reserva, seccion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (id_doc, datos['materia'], datos['carrera'],
-                  datos['estudiantes'], datos['periodo'], datos['tipo']))
+                  datos['estudiantes'], datos['periodo'], datos['tipo'],
+                  datos.get('seccion', '')))
             id_res = cursor.lastrowid
 
             cursor.execute("""
@@ -386,10 +427,11 @@ class DatabaseModel:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE reservas
-                SET materia=%s, num_estudiantes=%s, carrera=%s, periodo=%s, tipo_reserva=%s
+                SET materia=%s, num_estudiantes=%s, carrera=%s, periodo=%s, tipo_reserva=%s, seccion=%s
                 WHERE id_reserva=%s
             """, (datos['materia'], datos['estudiantes'], datos.get('carrera', ''),
-                  datos.get('periodo', ''), datos.get('tipo', 'Clase Semestral'), id_reserva))
+                  datos.get('periodo', ''), datos.get('tipo', 'Clase Semestral'),
+                  datos.get('seccion', ''), id_reserva))
 
             cursor.execute("""
                 UPDATE detalles_horario
@@ -400,6 +442,7 @@ class DatabaseModel:
             conn.commit()
             return True
         except Exception as e:
+            conn.rollback()
             logger.error("Error actualizando reserva: %s", e)
             return False
         finally:
@@ -416,6 +459,7 @@ class DatabaseModel:
             conn.commit()
             return True
         except Exception as e:
+            conn.rollback()
             logger.error("Error al eliminar reserva: %s", e)
             return False
         finally:
@@ -450,7 +494,7 @@ class DatabaseModel:
             cursor.execute("""
                 SELECT r.id_reserva, d.nombre, r.materia, r.carrera, r.num_estudiantes,
                        l.nombre_lab, dh.fecha, TIME_FORMAT(dh.hora_inicio, '%H:%i'),
-                       TIME_FORMAT(dh.hora_fin, '%H:%i')
+                       TIME_FORMAT(dh.hora_fin, '%H:%i'), r.seccion
                 FROM reservas r
                 JOIN docentes d ON r.id_docente = d.id_docente
                 JOIN detalles_horario dh ON r.id_reserva = dh.id_reserva
@@ -616,7 +660,7 @@ class DatabaseModel:
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id_horario, materia, profesor, dia_semana, hora_inicio, hora_fin
+                SELECT id_horario, materia, profesor, dia_semana, hora_inicio, hora_fin, seccion
                 FROM horarios_semestrales
                 WHERE id_semestre = %s
                 ORDER BY hora_inicio
@@ -625,16 +669,38 @@ class DatabaseModel:
         finally:
             conn.close()
 
-    def agregar_horario_semestral(self, id_semestre, materia, profesor, dia_semana, hora_inicio, hora_fin):
+    def obtener_horarios_por_dias(self, id_semestre, dias):
+        if not dias:
+            return []
+        conn = self.conectar()
+        if not conn:
+            return []
+        try:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(dias))
+            cursor.execute(f"""
+                SELECT id_horario, materia, profesor, dia_semana, hora_inicio, hora_fin, seccion
+                FROM horarios_semestrales
+                WHERE id_semestre = %s
+                AND UPPER(dia_semana) IN ({placeholders})
+                ORDER BY hora_inicio
+            """, (id_semestre, *[d.upper() for d in dias]))
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
+    def agregar_horario_semestral(self, id_semestre, materia, profesor, dia_semana,
+                                   hora_inicio, hora_fin, seccion=""):
         conn = self.conectar()
         if not conn:
             return False
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO horarios_semestrales (id_semestre, materia, profesor, dia_semana, hora_inicio, hora_fin)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (id_semestre, materia, profesor, dia_semana, hora_inicio, hora_fin))
+                INSERT INTO horarios_semestrales
+                    (id_semestre, materia, profesor, dia_semana, hora_inicio, hora_fin, seccion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (id_semestre, materia, profesor, dia_semana, hora_inicio, hora_fin, seccion))
             conn.commit()
             return True
         except Exception as e:

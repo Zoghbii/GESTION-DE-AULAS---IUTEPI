@@ -8,7 +8,6 @@ from qfluentwidgets import (
     setTheme, Theme, setThemeColor, NavigationAvatarWidget, InfoBar, InfoBarPosition
 )
 
-from utils.db_model import DatabaseModel
 from views.home_view import HomeView
 from views.reserva_view import ReservaView
 from views.reportes_view import ReportesView
